@@ -301,53 +301,62 @@
     updateTotalPrice();
   });
 
-  // Toggle switch script
-  $(".summary_toggle").off("click").on("click", function () {
-    const currentSelection = $('input[name="billingCycle"]:checked').val();
-    const currentSliderValue = parseInt(slider.val(), 10);
 
-    if (currentSliderValue < 60) {
-      if (currentSelection === "monthly") {
-        $("#annual").prop("checked", true).trigger("change");
-        $(toggle).addClass("active");
-        $(toggleDot).addClass("active");
+    // Function to handle the summary toggle logic
+    function handleSummaryToggle() {
+      const currentSelection = $('input[name="billingCycle"]:checked').val();
+      const currentSliderValue = parseInt(slider.val(), 10);
 
-        previousSliderValue = currentSliderValue;
-        const annualSliderValue = 60;
-        slider.val(annualSliderValue).trigger("input");
-        ticketNumber.val(annualSliderValue);
+      if (currentSliderValue < 60) {
+          if (currentSelection === "monthly") {
+              $("#annual").prop("checked", true).trigger("change");
+              $(toggle).addClass("active");
+              $(toggleDot).addClass("active");
 
-        const planDetails = updateHelpdeskPlan(annualSliderValue);
-        displayPlanDetails(planDetails);
-        syncTicketNumberWithEntryTickets(annualSliderValue);
-        updateProgressBar(slider[0]);
+              previousSliderValue = currentSliderValue;
+              const annualSliderValue = 60;
+              slider.val(annualSliderValue).trigger("input");
+              ticketNumber.val(annualSliderValue);
+
+              const planDetails = updateHelpdeskPlan(annualSliderValue);
+              displayPlanDetails(planDetails);
+              syncTicketNumberWithEntryTickets(annualSliderValue);
+              updateProgressBar(slider[0]);
+          } else {
+              $("#monthly").prop("checked", true).trigger("change");
+              $(toggle).removeClass("active");
+              $(toggleDot).removeClass("active");
+
+              slider.val(previousSliderValue).trigger("input");
+              ticketNumber.val(previousSliderValue);
+
+              const planDetails = updateHelpdeskPlan(previousSliderValue);
+              displayPlanDetails(planDetails);
+              syncTicketNumberWithEntryTickets(previousSliderValue);
+              updateProgressBar(slider[0]);
+          }
       } else {
-        $("#monthly").prop("checked", true).trigger("change");
-        $(toggle).removeClass("active");
-        $(toggleDot).removeClass("active");
-
-        slider.val(previousSliderValue).trigger("input");
-        ticketNumber.val(previousSliderValue);
-
-        const planDetails = updateHelpdeskPlan(previousSliderValue);
-        displayPlanDetails(planDetails);
-        syncTicketNumberWithEntryTickets(previousSliderValue);
-        updateProgressBar(slider[0]);
-      }
-    } else {
-      if (currentSelection === "monthly") {
-        $("#annual").prop("checked", true).trigger("change");
-        $(toggle).addClass("active");
-        $(toggleDot).addClass("active");
-      } else {
-        $("#monthly").prop("checked", true).trigger("change");
-        $(toggle).removeClass("active");
-        $(toggleDot).removeClass("active");
-      }
+          if (currentSelection === "monthly") {
+              $("#annual").prop("checked", true).trigger("change");
+              $(toggle).addClass("active");
+              $(toggleDot).addClass("active");
+          } else {
+              $("#monthly").prop("checked", true).trigger("change");
+              $(toggle).removeClass("active");
+              $(toggleDot).removeClass("active");
+          }
     }
 
     updateTotalPrice();
+}
+
+
+    // Attach the click event to the summary toggle
+    $(".summary_toggle").off("click").on("click", function() {
+      console.log('Summary toggle clicked');
+      handleSummaryToggle();
   });
+
 
   // Update the radio button change event listener
   $('input[name="billingCycle"]').off("change").change(function () {
