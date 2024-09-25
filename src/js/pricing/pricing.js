@@ -112,22 +112,15 @@ const smsTiers = {
   ],
 };
 
-// Select Voice and SMS selects
-const voiceTicketsSelect = document.querySelector(`[data-target="voice-tickets"]`);
-const smsTicketsSelect = document.querySelector(`[data-target="sms-tickets"]`);
-const voiceSummary = document.querySelector(`[data-summary="voice"]`);
-const smsSummary = document.querySelector(`[data-summary="sms"]`);
-let chosenAutomatedTickets = document.querySelector(`[data-el="chosen-automated-tickets"]`);
-let chosenHelpdeskTickets = document.querySelector(`[data-el="chosen-helpdesk-tickets"]`);
-
 /****************************
  *
  * Global Functions
  *
  ****************************/
 
-// Format figures with comma separator
+// Format figures with comma separator and round to integer
 function formatNumberWithCommas(number) {
+  number = Math.round(number); // Ensures the number is an integer
   return number.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
 }
 
@@ -173,7 +166,7 @@ $("#ticketRange, #ticketRange-2").on("input change", function () {
   updateMoreTicketsCTA();
 
   // After ticket input changes, trigger next steps
-  if (globalCurrentPlanName === "Starter") {
+  if (globalInitialPlanName === "Starter") {
     toggleMonthly();
   }
 
@@ -185,8 +178,11 @@ $("#ticketRange, #ticketRange-2").on("input change", function () {
   // Display alert
   displayAlert();
 
+  // Update overage display
+  updateOverageDisplay();
+
   // Check if a valid plan has been determined
-  if (globalCurrentPlanName && chosenHelpdeskPrice > 0) {
+  if (globalInitialPlanName && globalInitialPlanPrice > 0) {
     // Update prices, UI elements, and calculate the summary
     updatePricesOnBillingCycleChange();
     calculateSummary();
@@ -221,6 +217,9 @@ $(".more-tickets-cta").on("click", function () {
 
   // Display alert
   displayAlert();
+
+  // Update overage display
+  updateOverageDisplay();
 
   // Log the change for debugging
   console.log("Range slider updated to max 10000 and step 100");
@@ -283,6 +282,9 @@ function initTicketNumber() {
   determinePlan(globalTicketNumber);
   updateActivePlanElement();
   updateLogosAndCTAs();
+
+  // Update overage display
+  updateOverageDisplay();
 }
 
 /****************************
@@ -309,6 +311,7 @@ function switchBillingCycle(billingCycle) {
   console.log("Switched to", billingCycle, "billing cycle");
   determinePlan(globalTicketNumber);
   displayAlert();
+  updateOverageDisplay();
 }
 
 // Event listener for billing toggle radio buttons
@@ -343,11 +346,11 @@ function displayAlert() {
     $(".yearly-billing-alert").css("display", "flex");
     $(".radio-wrap.billing-toggle-radio.is-yearly").removeClass("is-disabled");
     console.log("Displaying yearly billing alert");
-  } else if (globalBillingCycle === "monthly" && globalCurrentPlanName === "Starter") {
+  } else if (globalBillingCycle === "monthly" && globalInitialPlanName === "Starter") {
     $(".starter-billing-alert").css("display", "flex");
     $(".radio-wrap.billing-toggle-radio.is-yearly").addClass("is-disabled");
     console.log("Displaying starter monthly billing alert");
-  } else if (globalBillingCycle === "monthly" && globalCurrentPlanName !== "Starter") {
+  } else if (globalBillingCycle === "monthly" && globalInitialPlanName !== "Starter") {
     $(".monthly-billing-alert").css("display", "flex");
     $(".radio-wrap.billing-toggle-radio.is-yearly").removeClass("is-disabled");
     console.log("Displaying monthly billing alert");
@@ -356,17 +359,19 @@ function displayAlert() {
 
 /****************************
  *
- * Step 3: Compare globalTicketNumber to Data Definitions
+ * Step 3: Determine Initial Plan Based on Total Tickets
  *
  ****************************/
 
-// Global variables for current plan
-let globalCurrentPlanName = "";
-let globalCurrentPlanPrice = 0; // This will hold the base price of the selected plan
+// Global variables for initial plan
+let globalInitialPlanName = "";
+let globalInitialPlanPrice = 0; // This will hold the base price of the selected plan
+let globalOverageTickets = 0;
+let globalOverageCost = 0; // Global overage cost
 
-// Function to determine the plan based on the number of tickets
+// Function to determine the initial plan based on the number of tickets
 function determinePlan(tickets) {
-  const previousPlanName = globalCurrentPlanName;
+  const previousPlanName = globalInitialPlanName;
   const plans = helpdeskPlans[globalBillingCycle];
   let currentPlanIndex = 0;
   let applicablePlan = plans[currentPlanIndex];
@@ -384,7 +389,7 @@ function determinePlan(tickets) {
 
     if (
       currentPlanIndex < plans.length - 1 &&
-      totalPrice > plans[currentPlanIndex + 1].monthly_cost
+      totalPrice >= plans[currentPlanIndex + 1].monthly_cost
     ) {
       currentPlanIndex++;
       applicablePlan = plans[currentPlanIndex];
@@ -393,27 +398,52 @@ function determinePlan(tickets) {
     }
   }
 
-  globalCurrentPlanName = applicablePlan.name;
-  globalCurrentPlanPrice = applicablePlan.monthly_cost;
-  $('[data-el="planName"]').text(globalCurrentPlanName);
+  globalInitialPlanName = applicablePlan.name;
+  globalInitialPlanPrice = applicablePlan.monthly_cost;
+
+  // Calculate global overage tickets and cost
+  globalOverageTickets = Math.max(0, tickets - applicablePlan.tickets_per_month);
+  globalOverageCost = globalOverageTickets * applicablePlan.cost_per_overage_ticket;
 
   console.log(
-    "Step 3: Selected Plan -",
-    globalCurrentPlanName,
+    "Step 3: Selected Initial Plan -",
+    globalInitialPlanName,
     "| Base Price:",
-    globalCurrentPlanPrice
+    globalInitialPlanPrice,
+    "| Global Overage Tickets:",
+    globalOverageTickets,
+    "| Global Overage Cost:",
+    globalOverageCost
   );
 
   if (
     previousPlanName === "Starter" &&
-    globalCurrentPlanName !== "Starter" &&
+    globalInitialPlanName !== "Starter" &&
     globalBillingCycle === "monthly"
   ) {
     console.log("Toggling to yearly due to plan change from 'Starter' and monthly billing.");
     toggleYearly();
   }
 
+  // Recalculate automate prices based on the new plan
   calculateAutomatePrices();
+}
+
+/****************************
+ *
+ * Function to Update Overage Display
+ *
+ ****************************/
+
+function updateOverageDisplay() {
+  const overageElement = $('[data-el="overages"]');
+  if (globalOverageCost > 0) {
+    overageElement.text(`+ $${formatNumberWithCommas(globalOverageCost)} overages`);
+    overageElement.css("display", "block");
+  } else {
+    overageElement.text("");
+    overageElement.css("display", "none");
+  }
 }
 
 /****************************
@@ -482,11 +512,22 @@ function calculateOptionPrices() {
   const percentages = [0, 10, 20, 30];
 
   percentages.forEach((percentage) => {
+    const automateTickets = window[`globalAutomateTickets${percentage}`];
     const automatePrice = window[`globalAutomatePrice${percentage}`];
-    const optionPrice = globalCurrentPlanPrice + automatePrice;
-    $('[data-el="helpdeskPrice' + percentage + '"]').text(optionPrice);
 
-    console.log(`Option ${percentage}%: ${optionPrice}`);
+    // Since overages are calculated globally, helpdesk price remains the same
+    const helpdeskBasePrice = globalInitialPlanPrice;
+
+    const optionBasePrice = helpdeskBasePrice + automatePrice;
+
+    // Update DOM elements with the base price only (excluding overages)
+    $('[data-el="helpdeskPrice' + percentage + '"]').text(
+      formatNumberWithCommas(Math.round(optionBasePrice))
+    );
+
+    console.log(
+      `Option ${percentage}%: Helpdesk Base Price: ${helpdeskBasePrice}, Automate Price: ${automatePrice}, Total Base Option Price: ${optionBasePrice}`
+    );
   });
 }
 
@@ -497,8 +538,12 @@ function calculateOptionPrices() {
  ****************************/
 
 // Initialize selectedCardType to a default value
-let selectedCardType = "pricingCard"; // Default value if no card is selected
+let selectedCardType = "pricingCard0"; // Default value if no card is selected
 let isProgrammaticClick = false; // Flag to track programmatic clicks
+
+// Global variables for current helpdesk plan
+let currentHelpdeskPlanName = "";
+let currentHelpdeskPlanPrice = 0;
 
 // Event listener for pricing card clicks
 $('[data-el^="pricingCard"]').on("click", function () {
@@ -536,6 +581,8 @@ $('[data-el^="pricingCard"]').on("click", function () {
   updateChosenPrices();
   calculateSummary();
   calculateROISavings();
+  updateActivePlanElement();
+  updateLogosAndCTAs();
 
   // Only scroll to #step-3 if this is a user click
   if (!isProgrammaticClick) {
@@ -580,21 +627,22 @@ function calculateROISavings() {
   const totalSupportTimeWithGorgias = (agentTicketsWithAutomate * avgTimePerTicketWithGorgias) / 60;
   const totalHumanCostWithGorgias = totalSupportTimeWithGorgias * avgSupportSalary;
 
-  const totalGorgiasCost = chosenHelpdeskPrice + chosenAutomatePrice;
+  const totalGorgiasCost = currentHelpdeskPlanPrice + chosenAutomatePrice + globalOverageCost;
 
   const timeSaved = totalSupportTimeWithoutGorgias - totalSupportTimeWithGorgias;
   const moneySaved = totalHumanCostWithoutGorgias - (totalHumanCostWithGorgias + totalGorgiasCost);
 
   // Format money saved with comma separators
-  const formattedMoneySaved = formatNumberWithCommas(moneySaved.toFixed(0));
+  const formattedMoneySaved = formatNumberWithCommas(Math.round(moneySaved));
 
   // Update the DOM with time and formatted money saved
-  $('[data-target="timeSaved"]').text(timeSaved.toFixed(0));
-  if(moneySaved > 0) {
-  $('[data-target="moneySaved"]').text(formattedMoneySaved);
-} else {  
-  $('[data-target="moneySaved"]').text("");
-}}
+  $('[data-target="timeSaved"]').text(Math.round(timeSaved));
+  if (moneySaved > 0) {
+    $('[data-target="moneySaved"]').text(formattedMoneySaved);
+  } else {
+    $('[data-target="moneySaved"]').text("");
+  }
+}
 
 /****************************
  *
@@ -605,11 +653,14 @@ function calculateROISavings() {
 function updatePricesOnBillingCycleChange() {
   console.log("Billing cycle changed to:", globalBillingCycle);
 
-  // Recalculate prices for the current billing cycle
-  determinePlan(globalTicketNumber); // This recalculates the plan based on ticket number
-  calculateAutomatePrices(); // Recalculate automate prices
-  updateVoiceTicketPrice();
-  updateSmsTicketPrice();
+  // Recalculate initial plan based on total tickets
+  determinePlan(globalTicketNumber);
+
+  // Recalculate automate prices
+  calculateAutomatePrices();
+
+  // Update overage display
+  updateOverageDisplay();
 
   // Ensure that chosen prices are updated after recalculating plans
   setTimeout(() => {
@@ -629,8 +680,12 @@ function updateChosenPrices() {
   console.log("Updating prices for selected card:", selectedCardType);
 
   const percentage = selectedCardType.replace("pricingCard", "") || "0";
-  chosenHelpdeskPrice = globalCurrentPlanPrice;
+  chosenHelpdeskPrice = globalInitialPlanPrice;
   chosenAutomatePrice = window[`globalAutomatePrice${percentage}`];
+
+  // Update the current helpdesk plan details
+  currentHelpdeskPlanName = globalInitialPlanName;
+  currentHelpdeskPlanPrice = globalInitialPlanPrice;
 
   // Check if automation is 0% and hide or show the automate summary
   if (percentage === "0") {
@@ -642,8 +697,13 @@ function updateChosenPrices() {
   }
 
   // Update the DOM with the chosen prices
-  $('[data-el="chosenHelpdeskPrice"]').text(chosenHelpdeskPrice);
-  $('[data-el="chosenAutomatePrice"]').text(chosenAutomatePrice);
+  $('[data-el="chosenHelpdeskPrice"]').text(formatNumberWithCommas(Math.round(chosenHelpdeskPrice)));
+  $('[data-el="chosenAutomatePrice"]').text(formatNumberWithCommas(Math.round(chosenAutomatePrice)));
+
+  // Update the plan name in the summary
+  $('[data-el="planName"]').text(currentHelpdeskPlanName);
+
+  // Overages are calculated globally and displayed separately
 }
 
 /****************************
@@ -665,8 +725,14 @@ function calculateSummary() {
     return;
   }
 
-  const summaryTotal = chosenHelpdeskPrice + chosenAutomatePrice + voiceTicketPrice + smsTicketPrice;
-  const formattedTotal = formatNumberWithCommas(summaryTotal.toFixed(0));
+  // Use the global overage cost in the summary total
+  const summaryTotal =
+    currentHelpdeskPlanPrice +
+    chosenAutomatePrice +
+    voiceTicketPrice +
+    smsTicketPrice +
+    globalOverageCost;
+  const formattedTotal = formatNumberWithCommas(Math.round(summaryTotal));
 
   $('[data-el="summaryTotalPrice"]').text(formattedTotal);
   console.log("Updated DOM with formatted summary total:", formattedTotal);
@@ -680,8 +746,11 @@ function calculateSummary() {
 
 function updateActivePlanElement() {
   const planElements = document.querySelectorAll("[g-col-highlight]");
+  // Use the current helpdesk plan name
+  let planName = currentHelpdeskPlanName || globalInitialPlanName;
+
   planElements.forEach((element) => {
-    if (element.getAttribute("g-col-highlight").toLowerCase() === globalCurrentPlanName.toLowerCase()) {
+    if (element.getAttribute("g-col-highlight").toLowerCase() === planName.toLowerCase()) {
       element.classList.add("is-active");
       console.log("Highlight updated");
     } else {
@@ -695,6 +764,14 @@ function updateActivePlanElement() {
  * Selecting and calculating voice and SMS tickets
  *
  ****************************/
+
+// Select Voice and SMS selects
+const voiceTicketsSelect = document.querySelector(`[data-target="voice-tickets"]`);
+const smsTicketsSelect = document.querySelector(`[data-target="sms-tickets"]`);
+const voiceSummary = document.querySelector(`[data-summary="voice"]`);
+const smsSummary = document.querySelector(`[data-summary="sms"]`);
+let chosenAutomatedTickets = document.querySelector(`[data-el="chosen-automated-tickets"]`);
+let chosenHelpdeskTickets = document.querySelector(`[data-el="chosen-helpdesk-tickets"]`);
 
 // Function to calculate the price of the voice tickets
 function calculateAddonTicketPrice(selectedTier, planType, tiers) {
@@ -753,10 +830,12 @@ function updateAddonUI(addonType, selectedTier, ticketPrice) {
 
   const selectedPlan = tiers.find((tier) => tier.tier === selectedTier);
   if (selectedPlan) {
-    $(`[data-el="nb${addonType.charAt(0).toUpperCase() + addonType.slice(1)}Tickets"]`).text(selectedPlan.range);
+    $(`[data-el="nb${addonType.charAt(0).toUpperCase() + addonType.slice(1)}Tickets"]`).text(
+      selectedPlan.range
+    );
   }
 
-  $(`[data-el="${addonType}Price"]`).text(ticketPrice.toFixed(0));
+  $(`[data-el="${addonType}Price"]`).text(formatNumberWithCommas(Math.round(ticketPrice)));
   console.log(`Updated UI with ${addonType} ticket price: ${ticketPrice}`);
 
   calculateSummary();
@@ -788,8 +867,8 @@ $('[data-summary="helpdesk-remove"]').on("click", function () {
   $(".code-radio").addClass("is-inactive");
   $(".pricing_card").removeClass("is-selected");
 
-  // Reset summary total price to "0,000"
-  $('[data-el="summaryTotalPrice"]').text("0,000");
+  // Reset summary total price to "0"
+  $('[data-el="summaryTotalPrice"]').text("0");
 
   // Reset chosen helpdesk and automate prices
   chosenHelpdeskPrice = 0;
@@ -798,7 +877,7 @@ $('[data-summary="helpdesk-remove"]').on("click", function () {
 
 $('[data-summary="automate-remove"]').on("click", function () {
   isProgrammaticClick = true;
-  const defaultPricingCard = document.querySelector('[data-el="pricingCard"]');
+  const defaultPricingCard = document.querySelector('[data-el="pricingCard0"]');
   if (defaultPricingCard) {
     console.log("Simulating click on default pricing card for 0% automation");
     defaultPricingCard.click();
@@ -871,7 +950,10 @@ function updateLogosAndCTAs() {
   let heroBtnLeft = $('[data-el="switch-btn-left"]');
   let heroBtnRight = $('[data-el="switch-btn-right"]');
 
-  if (globalCurrentPlanName === "Starter" || globalCurrentPlanName === "Basic") {
+  // Use the current helpdesk plan name
+  let planName = currentHelpdeskPlanName || globalInitialPlanName;
+
+  if (planName === "Starter" || planName === "Basic") {
     $(".is-pro-logos").css("display", "flex");
     $(".is-advanced-logos, .is-enterprise-logos").css("display", "none");
     $('[data-el="book-demo"]').css("display", "none");
@@ -883,7 +965,7 @@ function updateLogosAndCTAs() {
 
     $(".pricing_card-wrapper, .pricing-step_banner").css("display", "flex");
     $(".pricing-step_banner.is-enterprise").css("display", "none");
-  } else if (globalCurrentPlanName === "Advanced" || globalCurrentPlanName === "Pro") {
+  } else if (planName === "Advanced" || planName === "Pro") {
     $(".is-advanced-logos").css("display", "flex");
     $(".is-pro-logos, .is-enterprise-logos").css("display", "none");
     $('[data-el="book-demo"]').css("display", "block");
@@ -895,7 +977,7 @@ function updateLogosAndCTAs() {
 
     $(".pricing_card-wrapper, .pricing-step_banner").css("display", "flex");
     $(".pricing-step_banner.is-enterprise").css("display", "none");
-  } else if (globalCurrentPlanName === "Enterprise") {
+  } else if (planName === "Enterprise") {
     $(".is-enterprise-logos").css("display", "flex");
     $(".is-pro-logos, .is-advanced-logos").css("display", "none");
     $(".pricing_card-wrapper, .pricing-step_banner").css("display", "none");
