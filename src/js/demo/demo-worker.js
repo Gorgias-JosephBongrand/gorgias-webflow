@@ -312,7 +312,7 @@
       }
     }
 
-    ChiliPiper.submit("gorgias", "Inbound_Ticket_Based_Routing", {
+    ChiliPiper.submit("gorgias", "aug-2026-ticket-based-routing", {
       map: true,
       lead: submittedValues,
       formId: 'hsForm_' + DEMO_FORM_ID,
