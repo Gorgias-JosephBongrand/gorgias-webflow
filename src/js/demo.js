@@ -118,7 +118,7 @@
             // customize CP routing based on the form submitted
             if(eventId === demoLeadFormId || eventId === demoLeadMultiStepFunnelFormId || eventId === demoFrLeadFormId  || event.data.id === demoLeadBfcmLp2025GiftFormId || event.data.id === demoLeadBfcmLp2025NoGiftFormId ) {
                 formName = 'demo'
-                cpRouterName = "inbound-router"; 
+                cpRouterName = "Inbound_Ticket_Based_Routing"; 
 
                 if(eventId == demoLeadBfcmLp2025GiftFormId) {
                     chilipiperDomWrapper = ".june-campaign_modal-wrapper.is-gift .wrapper-chilipiper-embed"; 
